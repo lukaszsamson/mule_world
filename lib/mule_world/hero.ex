@@ -11,7 +11,7 @@ defmodule MuleWorld.Hero do
   @type status_t :: :dead | :alive
 
   @type t :: %__MODULE__{
-          position: Coordinates.t(),
+          position: Coordinates.t() | nil,
           status: status_t
         }
 
@@ -21,6 +21,29 @@ defmodule MuleWorld.Hero do
 
   @impl true
   def init(_arg) do
-    {:ok, %__MODULE__{}}
+    {:ok, %__MODULE__{
+      status: :dead,
+      position: nil
+    }}
+  end
+
+  @impl true
+  def handle_info(:attacked, state = %__MODULE__{}) do
+    state = %__MODULE__{state |
+      status: :dead,
+      # TODO
+      position: nil
+    }
+
+    {:noreply, state}
+  end
+
+  def handle_info({:spawned, position}, state = %__MODULE__{}) do
+    state = %__MODULE__{state |
+      status: :alive,
+      position: position
+    }
+
+    {:noreply, state}
   end
 end
