@@ -15,8 +15,12 @@ defmodule MuleWorld.Hero do
           status: status_t
         }
 
+  def via_tuple(player_name) do
+    {:via, Registry, {MuleWorld.PlayerRegistry, player_name}}
+  end
+
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args, name: __MODULE__)
+    GenServer.start_link(__MODULE__, args, name: via_tuple(Keyword.fetch!(args, :player_name)))
   end
 
   @impl true
