@@ -89,3 +89,34 @@
   display: block;
   margin: -1rem 0 2rem;
 }
+
+.mule-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.mule-grid-row {
+  display: flex;
+}
+
+.mule-grid-cell {
+  width: 50px;
+  height: 50px;
+  border: 1px solid;
+}
+
+.mule-obstacle {
+  background-color: #888;
+}
+
+.mule-hero {
+  background-color: chartreuse;
+}
+
+.mule-enemy {
+  background-color: red;
+}
+
+.mule-dead {
+  background-color: yellow;
+}

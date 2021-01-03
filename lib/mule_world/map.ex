@@ -37,11 +37,19 @@ defmodule MuleWorld.Map do
     GenServer.call(__MODULE__, {:attack, player_name})
   end
 
+  def get() do
+    GenServer.call(__MODULE__, :get)
+  end
+
+  def map_size, do: @map_size
+
   @impl true
   def init(_arg) do
     if Mix.env == :test do
       :rand.seed(:exsss, {11, 12, 10})
     end
+
+    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
 
     {:ok, %__MODULE__{
       obstacles: generate_obstacles(),
@@ -50,17 +58,23 @@ defmodule MuleWorld.Map do
   end
 
   @impl true
+  def handle_call(:get, _from, state) do
+    {:reply, state, state}
+  end
+
   def handle_call({:join, player_name}, {hero_pid, _ref}, state) do
     Process.monitor(hero_pid)
 
     hero = %Hero{
       position: get_free_coordinate(state),
-      status: :alive
+      status: :alive,
+      player_name: player_name
     }
 
     heroes = state.heroes
     |> Map.put(player_name, {hero_pid, hero})
 
+    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:reply, hero.position, %{state | heroes: heroes}}
   end
 
@@ -88,6 +102,7 @@ defmodule MuleWorld.Map do
       {:error, state.heroes}
     end
 
+    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:reply, result, %{state | heroes: heroes}}
   end
 
@@ -113,6 +128,8 @@ defmodule MuleWorld.Map do
       _ ->
         state
     end
+
+    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:reply, result, state}
   end
 
@@ -122,6 +139,7 @@ defmodule MuleWorld.Map do
     |> Enum.reject(&match?({_name, {^pid, _}}, &1))
     |> Map.new
 
+    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:noreply, %{state | heroes: heroes}}
   end
 
@@ -139,6 +157,7 @@ defmodule MuleWorld.Map do
       nil ->
         state.heroes
     end
+    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:noreply, %{state | heroes: heroes}}
   end
 

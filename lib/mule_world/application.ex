@@ -15,7 +15,9 @@ defmodule MuleWorld.Application do
       {Phoenix.PubSub, name: MuleWorld.PubSub},
       # Start the Endpoint (http/https)
       MuleWorldWeb.Endpoint,
-      {Registry, keys: :unique, name: MuleWorld.PlayerRegistry}
+      {Registry, keys: :unique, name: MuleWorld.PlayerRegistry},
+      MuleWorld.HeroSupervisor,
+      MuleWorld.Map
       # Start a worker by calling: MuleWorld.Worker.start_link(arg)
       # {MuleWorld.Worker, arg}
     ]
