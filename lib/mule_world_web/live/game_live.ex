@@ -5,14 +5,18 @@ defmodule MuleWorldWeb.GameLive do
   @impl true
   def mount(params, _session, socket) do
     player_name = params["player_name"] || random_name()
+
     if connected?(socket) do
       Phoenix.PubSub.subscribe(MuleWorld.PubSub, "game")
     end
+
     MuleWorld.HeroSupervisor.start_player(player_name)
+
     %{
       obstacles: obstacles,
       heroes: heroes
     } = MuleWorld.Map.get()
+
     {:ok, assign(socket, player_name: player_name, obstacles: obstacles, heroes: heroes)}
   end
 
@@ -22,6 +26,7 @@ defmodule MuleWorldWeb.GameLive do
       obstacles: obstacles,
       heroes: heroes
     } = MuleWorld.Map.get()
+
     {:noreply, assign(socket, obstacles: obstacles, heroes: heroes)}
   end
 
@@ -59,13 +64,20 @@ defmodule MuleWorldWeb.GameLive do
 
   def get_class(x, y, obstacles, heroes, player_name) do
     position = Coordinates.coordinates(x: x, y: y)
-    player_hero = case heroes[player_name] do
-      {_, %{position: ^position, status: :alive}} = hero -> hero
-      _ -> nil
-    end
 
-    alive_enemy = Enum.find(heroes, fn {_name, {_pid, hero}} -> hero.position == position and hero.status == :alive end)
+    player_hero =
+      case heroes[player_name] do
+        {_, %{position: ^position, status: :alive}} = hero -> hero
+        _ -> nil
+      end
+
+    alive_enemy =
+      Enum.find(heroes, fn {_name, {_pid, hero}} ->
+        hero.position == position and hero.status == :alive
+      end)
+
     dead = Enum.find(heroes, fn {_name, {_pid, hero}} -> hero.position == position end)
+
     cond do
       position in obstacles -> "mule-obstacle"
       player_hero != nil -> "mule-hero"

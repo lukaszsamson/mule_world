@@ -15,7 +15,7 @@ defmodule MuleWorld.Hero do
   @type t :: %__MODULE__{
           position: Coordinates.t() | nil,
           status: status_t,
-          player_name: String.t
+          player_name: String.t()
         }
 
   def via_tuple(player_name) do
@@ -38,54 +38,56 @@ defmodule MuleWorld.Hero do
   def init(args) do
     player_name = Keyword.fetch!(args, :player_name)
     position = Map.join(player_name)
-    {:ok, %__MODULE__{
-      player_name: player_name,
-      status: :alive,
-      position: position
-    }}
+
+    {:ok,
+     %__MODULE__{
+       player_name: player_name,
+       status: :alive,
+       position: position
+     }}
   end
 
   @impl true
   def handle_call({:move, direction}, _from, state = %__MODULE__{}) do
-    result = if state.status == :alive do
-      Map.move(state.player_name, direction)
-    else
-      :error
-    end
+    result =
+      if state.status == :alive do
+        Map.move(state.player_name, direction)
+      else
+        :error
+      end
 
-    {result, state} = case result do
-      {:ok, new_position} ->
-        {:ok, %{state | position: new_position}}
-      other ->
-        {other, state}
-    end
+    {result, state} =
+      case result do
+        {:ok, new_position} ->
+          {:ok, %{state | position: new_position}}
+
+        other ->
+          {other, state}
+      end
 
     {:reply, result, state}
   end
 
   def handle_call(:attack, _from, state = %__MODULE__{}) do
-    result = if state.status == :alive do
-      Map.attack(state.player_name)
-    else
-      :error
-    end
+    result =
+      if state.status == :alive do
+        Map.attack(state.player_name)
+      else
+        :error
+      end
+
     {:reply, result, state}
   end
 
   @impl true
   def handle_info(:attacked, state = %__MODULE__{}) do
-    state = %__MODULE__{state |
-      status: :dead
-    }
+    state = %__MODULE__{state | status: :dead}
 
     {:noreply, state}
   end
 
   def handle_info({:spawned, position}, state = %__MODULE__{}) do
-    state = %__MODULE__{state |
-      status: :alive,
-      position: position
-    }
+    state = %__MODULE__{state | status: :alive, position: position}
 
     {:noreply, state}
   end

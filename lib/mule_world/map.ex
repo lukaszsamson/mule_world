@@ -15,11 +15,11 @@ defmodule MuleWorld.Map do
   @type status_t :: :dead | :alive
 
   @type t :: %__MODULE__{
-    obstacles: [Coordinates.t],
-    heroes: %{
-      optional(String.t) => {pid, Hero.t}
-    }
-  }
+          obstacles: [Coordinates.t()],
+          heroes: %{
+            optional(String.t()) => {pid, Hero.t()}
+          }
+        }
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
@@ -45,16 +45,17 @@ defmodule MuleWorld.Map do
 
   @impl true
   def init(_arg) do
-    if Mix.env == :test do
+    if Mix.env() == :test do
       :rand.seed(:exsss, {11, 12, 10})
     end
 
     Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
 
-    {:ok, %__MODULE__{
-      obstacles: generate_obstacles(),
-      heroes: %{}
-    }}
+    {:ok,
+     %__MODULE__{
+       obstacles: generate_obstacles(),
+       heroes: %{}
+     }}
   end
 
   @impl true
@@ -71,8 +72,9 @@ defmodule MuleWorld.Map do
       player_name: player_name
     }
 
-    heroes = state.heroes
-    |> Map.put(player_name, {hero_pid, hero})
+    heroes =
+      state.heroes
+      |> Map.put(player_name, {hero_pid, hero})
 
     Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:reply, hero.position, %{state | heroes: heroes}}
@@ -80,27 +82,32 @@ defmodule MuleWorld.Map do
 
   def handle_call({:attack, player_name}, _from, state) do
     hero = elem(state.heroes[player_name], 1)
-    {result, heroes} = if hero.status == :alive do
-      attacked_coordinates = hero.position
-      |> get_attacked_coordinates()
 
-      attacked_heroes = state.heroes
-      |> Enum.filter(fn {name, {_pid, hero}} ->
-        name != player_name and hero.status == :alive and hero.position in attacked_coordinates
-      end)
-      |> Enum.map(fn {name, {pid, hero}} ->
-        {name, {pid, %{hero | status: :dead}}}
-      end)
+    {result, heroes} =
+      if hero.status == :alive do
+        attacked_coordinates =
+          hero.position
+          |> get_attacked_coordinates()
 
-      for {name, {pid, _hero}} <- attacked_heroes do
-        send(pid, :attacked)
-        Process.send_after(self(), {:respawn, name}, @respawn_timeout)
+        attacked_heroes =
+          state.heroes
+          |> Enum.filter(fn {name, {_pid, hero}} ->
+            name != player_name and hero.status == :alive and
+              hero.position in attacked_coordinates
+          end)
+          |> Enum.map(fn {name, {pid, hero}} ->
+            {name, {pid, %{hero | status: :dead}}}
+          end)
+
+        for {name, {pid, _hero}} <- attacked_heroes do
+          send(pid, :attacked)
+          Process.send_after(self(), {:respawn, name}, @respawn_timeout)
+        end
+
+        {:ok, state.heroes |> Map.merge(Map.new(attacked_heroes))}
+      else
+        {:error, state.heroes}
       end
-
-      {:ok, state.heroes |> Map.merge(Map.new(attacked_heroes))}
-    else
-      {:error, state.heroes}
-    end
 
     Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:reply, result, %{state | heroes: heroes}}
@@ -108,26 +115,31 @@ defmodule MuleWorld.Map do
 
   def handle_call({:move, player_name, direction}, {pid, _ref}, state = %__MODULE__{}) do
     hero = elem(state.heroes[player_name], 1)
-    result = if hero.status == :alive do
-      new_position = hero.position
-      |> Coordinates.move(direction)
 
-      if on_map?(new_position) and not obstacled?(new_position, state) do
-        {:ok, new_position}
+    result =
+      if hero.status == :alive do
+        new_position =
+          hero.position
+          |> Coordinates.move(direction)
+
+        if on_map?(new_position) and not obstacled?(new_position, state) do
+          {:ok, new_position}
+        else
+          :error
+        end
       else
         :error
       end
-    else
-      :error
-    end
 
-    state = case result do
-      {:ok, new_position} ->
-        hero = %{hero | position: new_position}
-        %{state | heroes: Map.put(state.heroes, player_name, {pid, hero})}
-      _ ->
-        state
-    end
+    state =
+      case result do
+        {:ok, new_position} ->
+          hero = %{hero | position: new_position}
+          %{state | heroes: Map.put(state.heroes, player_name, {pid, hero})}
+
+        _ ->
+          state
+      end
 
     Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:reply, result, state}
@@ -135,34 +147,36 @@ defmodule MuleWorld.Map do
 
   @impl true
   def handle_info({:DOWN, _, :process, pid, _}, state) do
-    heroes = state.heroes
-    |> Enum.reject(&match?({_name, {^pid, _}}, &1))
-    |> Map.new
+    heroes =
+      state.heroes
+      |> Enum.reject(&match?({_name, {^pid, _}}, &1))
+      |> Map.new()
 
     Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:noreply, %{state | heroes: heroes}}
   end
 
   def handle_info({:respawn, name}, state) do
-    heroes = case state.heroes[name] do
-      {pid, hero} ->
-        position = get_free_coordinate(state)
-        send(pid, {:spawned, position})
+    heroes =
+      case state.heroes[name] do
+        {pid, hero} ->
+          position = get_free_coordinate(state)
+          send(pid, {:spawned, position})
 
-        state.heroes
-        |> Map.put(name, {pid, %{hero |
-          status: :alive,
-          position: position
-        }})
-      nil ->
-        state.heroes
-    end
+          state.heroes
+          |> Map.put(name, {pid, %{hero | status: :alive, position: position}})
+
+        nil ->
+          state.heroes
+      end
+
     Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
     {:noreply, %{state | heroes: heroes}}
   end
 
   def generate_obstacles() do
     obstacle_number = Enum.random(1..15)
+
     for _ <- 1..obstacle_number, uniq: true do
       get_random_coordinates()
     end
@@ -194,8 +208,8 @@ defmodule MuleWorld.Map do
 
   def get_attacked_coordinates(Coordinates.coordinates(x: x0, y: y0)) do
     for x <- (x0 - 1)..(x0 + 1),
-      y <- (y0 - 1)..(y0 + 1) do
-        Coordinates.coordinates(x: x, y: y)
-      end
+        y <- (y0 - 1)..(y0 + 1) do
+      Coordinates.coordinates(x: x, y: y)
+    end
   end
 end

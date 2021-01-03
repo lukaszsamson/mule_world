@@ -6,25 +6,26 @@ defmodule MuleWorld.Application do
   use Application
 
   def start(_type, _args) do
-    children = [
-      # Start the Ecto repository
-      MuleWorld.Repo,
-      # Start the Telemetry supervisor
-      MuleWorldWeb.Telemetry,
-      # Start the PubSub system
-      {Phoenix.PubSub, name: MuleWorld.PubSub},
-      # Start the Endpoint (http/https)
-      MuleWorldWeb.Endpoint,
-      {Registry, keys: :unique, name: MuleWorld.PlayerRegistry},
+    children =
+      [
+        # Start the Ecto repository
+        MuleWorld.Repo,
+        # Start the Telemetry supervisor
+        MuleWorldWeb.Telemetry,
+        # Start the PubSub system
+        {Phoenix.PubSub, name: MuleWorld.PubSub},
+        # Start the Endpoint (http/https)
+        MuleWorldWeb.Endpoint,
+        {Registry, keys: :unique, name: MuleWorld.PlayerRegistry}
 
-      # Start a worker by calling: MuleWorld.Worker.start_link(arg)
-      # {MuleWorld.Worker, arg}
-    ] ++ if Mix.env != :test do
-      [MuleWorld.HeroSupervisor,
-      MuleWorld.Map]
-    else
-      []
-    end
+        # Start a worker by calling: MuleWorld.Worker.start_link(arg)
+        # {MuleWorld.Worker, arg}
+      ] ++
+        if Mix.env() != :test do
+          [MuleWorld.HeroSupervisor, MuleWorld.Map]
+        else
+          []
+        end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
