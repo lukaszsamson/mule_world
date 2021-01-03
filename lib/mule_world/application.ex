@@ -16,11 +16,15 @@ defmodule MuleWorld.Application do
       # Start the Endpoint (http/https)
       MuleWorldWeb.Endpoint,
       {Registry, keys: :unique, name: MuleWorld.PlayerRegistry},
-      MuleWorld.HeroSupervisor,
-      MuleWorld.Map
+
       # Start a worker by calling: MuleWorld.Worker.start_link(arg)
       # {MuleWorld.Worker, arg}
-    ]
+    ] ++ if Mix.env != :test do
+      [MuleWorld.HeroSupervisor,
+      MuleWorld.Map]
+    else
+      []
+    end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
