@@ -1,15 +1,18 @@
 defmodule MuleWorl.HeroTest do
   use ExUnit.Case, async: false
 
+  alias MuleWorld.Map
   alias MuleWorld.Hero
   require MuleWorld.Coordinates, as: Coordinates
 
+  setup do
+    {:ok, _} = Map.start_link([])
+    {:ok, %{}}
+  end
+
   test "starts" do
     assert {:ok, pid} = Hero.start_link(player_name: "test")
-    assert %Hero{
-      status: :nil,
-      position: nil
-    } = :sys.get_state(pid)
+    assert %Hero{position: {:coordinates, 0, 0}, status: :alive, player_name: "test"} = :sys.get_state(pid)
   end
 
   test "gets spawned" do

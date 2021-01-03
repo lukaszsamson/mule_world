@@ -1,7 +1,13 @@
 defmodule MuleWorl.HeroSupervisorTest do
   use ExUnit.Case, async: false
 
+  alias MuleWorld.Map
   alias MuleWorld.HeroSupervisor
+
+  setup do
+    {:ok, _} = Map.start_link([])
+    {:ok, %{}}
+  end
 
   test "starts" do
     assert {:ok, _pid} = HeroSupervisor.start_link([])

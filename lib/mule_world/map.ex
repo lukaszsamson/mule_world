@@ -5,6 +5,7 @@ defmodule MuleWorld.Map do
   alias MuleWorld.Hero
 
   @map_size 10
+  @respawn_timeout 5000
 
   defstruct [
     :obstacles,
@@ -24,16 +25,24 @@ defmodule MuleWorld.Map do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
-  def join(hero_pid, player_name) do
-    GenServer.cast(__MODULE__, {:join, hero_pid, player_name})
+  def join(player_name) do
+    GenServer.call(__MODULE__, {:join, player_name})
   end
 
   def move(player_name, direction) do
-    GenServer.cast(__MODULE__, {:move, player_name, direction})
+    GenServer.call(__MODULE__, {:move, player_name, direction})
+  end
+
+  def attack(player_name) do
+    GenServer.call(__MODULE__, {:attack, player_name})
   end
 
   @impl true
   def init(_arg) do
+    if Mix.env == :test do
+      :rand.seed(:exsss, {11, 12, 10})
+    end
+
     {:ok, %__MODULE__{
       obstacles: generate_obstacles(),
       heroes: %{}
@@ -41,7 +50,7 @@ defmodule MuleWorld.Map do
   end
 
   @impl true
-  def handle_cast({:join, hero_pid, player_name}, state) do
+  def handle_call({:join, player_name}, {hero_pid, _ref}, state) do
     Process.monitor(hero_pid)
 
     hero = %Hero{
@@ -52,39 +61,57 @@ defmodule MuleWorld.Map do
     heroes = state.heroes
     |> Map.put(player_name, {hero_pid, hero})
 
-    send(hero_pid, {:spawned, hero.position})
-
-    {:noreply, %{state | heroes: heroes}}
+    {:reply, hero.position, %{state | heroes: heroes}}
   end
 
-  @impl true
   def handle_call({:attack, player_name}, _from, state) do
-    attacked_coordinates = state.heroes[player_name].position
-    |> get_attacked_coordinates()
+    hero = elem(state.heroes[player_name], 1)
+    {result, heroes} = if hero.status == :alive do
+      attacked_coordinates = hero.position
+      |> get_attacked_coordinates()
 
-    attacked_heroes = state.heroes
-    |> Enum.filter(fn {name, {_pid, hero}} ->
-      name != player_name and hero.status == :alive and hero.position in attacked_coordinates
-    end)
-    |> Enum.map(fn {name, {pid, hero}} ->
-      {name, {pid, %{hero | status: :dead}}}
-    end)
+      attacked_heroes = state.heroes
+      |> Enum.filter(fn {name, {_pid, hero}} ->
+        name != player_name and hero.status == :alive and hero.position in attacked_coordinates
+      end)
+      |> Enum.map(fn {name, {pid, hero}} ->
+        {name, {pid, %{hero | status: :dead}}}
+      end)
 
-    for {_name, {pid, _hero}} <- attacked_heroes do
-      send(pid, :attacked)
+      for {name, {pid, _hero}} <- attacked_heroes do
+        send(pid, :attacked)
+        Process.send_after(self(), {:respawn, name}, @respawn_timeout)
+      end
+
+      {:ok, state.heroes |> Map.merge(Map.new(attacked_heroes))}
+    else
+      {:error, state.heroes}
     end
 
-    {:reply, :ok, %{state | heroes: state.heroes |> Map.merge(Map.new(attacked_heroes))}}
+    {:reply, result, %{state | heroes: heroes}}
   end
 
-  def handle_call({:move, player_name, direction}, _from, state = %__MODULE__{heroes: heroes}) do
-    new_position = heroes[player_name].position
-    |> Coordinates.move(direction)
+  def handle_call({:move, player_name, direction}, {pid, _ref}, state = %__MODULE__{}) do
+    hero = elem(state.heroes[player_name], 1)
+    result = if hero.status == :alive do
+      new_position = hero.position
+      |> Coordinates.move(direction)
 
-    result = if on_map?(new_position) and not obstacled?(new_position, state) do
-      :ok
+      if on_map?(new_position) and not obstacled?(new_position, state) do
+        {:ok, new_position}
+      else
+        :error
+      end
     else
       :error
+    end
+
+    state = case result do
+      {:ok, new_position} ->
+        hero = %{hero | position: new_position}
+        %{state | heroes: Map.put(state.heroes, player_name, {pid, hero})}
+      _ ->
+        state
     end
     {:reply, result, state}
   end
@@ -98,8 +125,25 @@ defmodule MuleWorld.Map do
     {:noreply, %{state | heroes: heroes}}
   end
 
+  def handle_info({:respawn, name}, state) do
+    heroes = case state.heroes[name] do
+      {pid, hero} ->
+        position = get_free_coordinate(state)
+        send(pid, {:spawned, position})
+
+        state.heroes
+        |> Map.put(name, {pid, %{hero |
+          status: :alive,
+          position: position
+        }})
+      nil ->
+        state.heroes
+    end
+    {:noreply, %{state | heroes: heroes}}
+  end
+
   def generate_obstacles() do
-    obstacle_number = Enum.random(1..30)
+    obstacle_number = Enum.random(1..15)
     for _ <- 1..obstacle_number, uniq: true do
       get_random_coordinates()
     end
