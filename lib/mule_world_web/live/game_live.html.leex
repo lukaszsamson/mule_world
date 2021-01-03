@@ -5,7 +5,6 @@
   <div class="mule-grid-row">
     <%= for x <- 0..(MuleWorld.Map.map_size - 1) do %>
     <span class="mule-grid-cell <%= get_class(x, y, @obstacles, @heroes, @player_name)%>">
-      <%= x %>, <%= y %>
     </span>
     <% end %>
   </div>

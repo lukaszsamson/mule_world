@@ -46,6 +46,7 @@ defmodule MuleWorld.Map do
   @impl true
   def init(_arg) do
     if Mix.env() == :test do
+      # make tests not random
       :rand.seed(:exsss, {11, 12, 10})
     end
 
