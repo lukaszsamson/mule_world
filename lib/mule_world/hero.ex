@@ -1,6 +1,7 @@
 defmodule MuleWorld.Hero do
   use GenServer
 
+  alias MuleWorld.Map
   alias MuleWorld.Coordinates
 
   defstruct [
@@ -8,7 +9,7 @@ defmodule MuleWorld.Hero do
     :status
   ]
 
-  @type status_t :: :dead | :alive
+  @type status_t :: :dead | :alive | nil
 
   @type t :: %__MODULE__{
           position: Coordinates.t() | nil,
@@ -24,19 +25,23 @@ defmodule MuleWorld.Hero do
   end
 
   @impl true
-  def init(_arg) do
-    {:ok, %__MODULE__{
-      status: :dead,
-      position: nil
-    }}
+  def init(args) do
+    Map.join(self(), Keyword.fetch!(args, :player_name))
+    {:ok, %__MODULE__{}}
   end
 
   @impl true
   def handle_info(:attacked, state = %__MODULE__{}) do
     state = %__MODULE__{state |
-      status: :dead,
-      # TODO
-      position: nil
+      status: :dead
+    }
+
+    {:noreply, state}
+  end
+
+  def handle_info({:moved, position}, state = %__MODULE__{}) do
+    state = %__MODULE__{state |
+      position: position
     }
 
     {:noreply, state}
@@ -50,4 +55,13 @@ defmodule MuleWorld.Hero do
 
     {:noreply, state}
   end
+
+  # def handle_call(:attack, state = %__MODULE__{}) do
+  #   result = if state.status == :alive do
+  #     Map.attack()
+  #   else
+  #     :error
+  #   end
+  #   {:reply, result, state}
+  # end
 end
