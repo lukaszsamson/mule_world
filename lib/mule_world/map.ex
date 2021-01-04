@@ -12,14 +12,14 @@ defmodule MuleWorld.Map do
     :heroes
   ]
 
-  @type status_t :: :dead | :alive
-
   @type t :: %__MODULE__{
           obstacles: [Coordinates.t()],
           heroes: %{
             optional(String.t()) => {pid, Hero.t()}
           }
         }
+
+  @table_name :"#{__MODULE__}_table"
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
@@ -38,7 +38,16 @@ defmodule MuleWorld.Map do
   end
 
   def get() do
-    GenServer.call(__MODULE__, :get)
+    case :ets.lookup(@table_name, :map_state) do
+      [{_key, value}] ->
+        value
+
+      [] ->
+        %__MODULE__{
+          obstacles: [],
+          heroes: %{}
+        }
+    end
   end
 
   def map_size, do: @map_size
@@ -50,20 +59,25 @@ defmodule MuleWorld.Map do
       :rand.seed(:exsss, {11, 12, 10})
     end
 
-    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
+    :ets.new(@table_name, [
+      :set,
+      :named_table,
+      :protected,
+      read_concurrency: true,
+      write_concurrency: false
+    ])
 
-    {:ok,
-     %__MODULE__{
-       obstacles: generate_obstacles(),
-       heroes: %{}
-     }}
+    state = %__MODULE__{
+      obstacles: generate_obstacles(),
+      heroes: %{}
+    }
+
+    update_table_and_notify(state)
+
+    {:ok, state}
   end
 
   @impl true
-  def handle_call(:get, _from, state) do
-    {:reply, state, state}
-  end
-
   def handle_call({:join, player_name}, {hero_pid, _ref}, state) do
     Process.monitor(hero_pid)
 
@@ -77,8 +91,11 @@ defmodule MuleWorld.Map do
       state.heroes
       |> Map.put(player_name, {hero_pid, hero})
 
-    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
-    {:reply, hero.position, %{state | heroes: heroes}}
+    state = %__MODULE__{state | heroes: heroes}
+
+    update_table_and_notify(state)
+
+    {:reply, hero.position, state}
   end
 
   def handle_call({:attack, player_name}, _from, state) do
@@ -110,8 +127,11 @@ defmodule MuleWorld.Map do
         {:error, state.heroes}
       end
 
-    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
-    {:reply, result, %{state | heroes: heroes}}
+    state = %__MODULE__{state | heroes: heroes}
+
+    update_table_and_notify(state)
+
+    {:reply, result, state}
   end
 
   def handle_call({:move, player_name, direction}, {pid, _ref}, state = %__MODULE__{}) do
@@ -135,14 +155,15 @@ defmodule MuleWorld.Map do
     state =
       case result do
         {:ok, new_position} ->
-          hero = %{hero | position: new_position}
-          %{state | heroes: Map.put(state.heroes, player_name, {pid, hero})}
+          hero = %Hero{hero | position: new_position}
+          %__MODULE__{state | heroes: Map.put(state.heroes, player_name, {pid, hero})}
 
         _ ->
           state
       end
 
-    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
+    update_table_and_notify(state)
+
     {:reply, result, state}
   end
 
@@ -153,8 +174,11 @@ defmodule MuleWorld.Map do
       |> Enum.reject(&match?({_name, {^pid, _}}, &1))
       |> Map.new()
 
-    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
-    {:noreply, %{state | heroes: heroes}}
+    state = %__MODULE__{state | heroes: heroes}
+
+    update_table_and_notify(state)
+
+    {:noreply, state}
   end
 
   def handle_info({:respawn, name}, state) do
@@ -165,14 +189,17 @@ defmodule MuleWorld.Map do
           send(pid, {:spawned, position})
 
           state.heroes
-          |> Map.put(name, {pid, %{hero | status: :alive, position: position}})
+          |> Map.put(name, {pid, %Hero{hero | status: :alive, position: position}})
 
         nil ->
           state.heroes
       end
 
-    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
-    {:noreply, %{state | heroes: heroes}}
+    state = %__MODULE__{state | heroes: heroes}
+
+    update_table_and_notify(state)
+
+    {:noreply, state}
   end
 
   def generate_obstacles() do
@@ -212,5 +239,11 @@ defmodule MuleWorld.Map do
         y <- (y0 - 1)..(y0 + 1) do
       Coordinates.coordinates(x: x, y: y)
     end
+  end
+
+  defp update_table_and_notify(state) do
+    :ets.insert(@table_name, {:map_state, state})
+
+    Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
   end
 end

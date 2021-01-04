@@ -24,6 +24,7 @@ defmodule MuleWorld.Application do
         if Mix.env() != :test do
           [MuleWorld.HeroSupervisor, MuleWorld.Map]
         else
+          # don't start game servers in test
           []
         end
 
