@@ -5,9 +5,13 @@
   <div class="mule-grid-row">
     <%= for x <- 0..(MuleWorld.Map.map_size - 1) do %>
     <span class="mule-grid-cell <%= get_class(x, y, @obstacles, @heroes, @player_name)%>">
+      <%= get_hero_name(x, y, @heroes, @player_name) %>
     </span>
     <% end %>
   </div>
   <% end %>
   </div>
+  <%= if @error do %>
+  <div>Error: <%= @error %></div>
+  <% end %>
 </section>

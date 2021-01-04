@@ -65,8 +65,8 @@ defmodule MuleWorl.MapTest do
 
     assert {:ok, _hero_pid} = Hero.start_link(player_name: "hero 1")
 
-    assert :error = Hero.move("hero 1", :left)
-    assert :error = Hero.move("hero 1", :up)
+    assert {:error, :map_boundary} = Hero.move("hero 1", :left)
+    assert {:error, :map_boundary} = Hero.move("hero 1", :up)
   end
 
   test "hero cant move through obstacle" do
@@ -78,7 +78,7 @@ defmodule MuleWorl.MapTest do
     :ok = Hero.move("hero 1", :right)
     :ok = Hero.move("hero 1", :right)
 
-    assert :error = Hero.move("hero 1", :right)
+    assert {:error, :obstacled} = Hero.move("hero 1", :right)
   end
 
   test "hero can move through other hero" do
@@ -164,8 +164,8 @@ defmodule MuleWorl.MapTest do
              status: :dead
            } = :sys.get_state(hero_pid_2)
 
-    assert :error = Hero.attack("hero 2")
-    assert :error = Hero.move("hero 2", :up)
+    assert {:error, :dead} = Hero.attack("hero 2")
+    assert {:error, :dead} = Hero.move("hero 2", :up)
   end
 
   test "dead hero respawns in 5s" do

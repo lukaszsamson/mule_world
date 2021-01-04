@@ -37,16 +37,27 @@ defmodule MuleWorld.Map do
     GenServer.call(__MODULE__, {:attack, player_name})
   end
 
-  def get() do
-    case :ets.lookup(@table_name, :map_state) do
+  @spec get_heroes :: %{
+          optional(String.t()) => Hero.t()
+        }
+  def get_heroes() do
+    case :ets.lookup(@table_name, :heroes) do
       [{_key, value}] ->
         value
 
       [] ->
-        %__MODULE__{
-          obstacles: [],
-          heroes: %{}
-        }
+        %{}
+    end
+  end
+
+  @spec get_obstacles :: [Coordinates.t()]
+  def get_obstacles() do
+    case :ets.lookup(@table_name, :obstacles) do
+      [{_key, value}] ->
+        value
+
+      [] ->
+        []
     end
   end
 
@@ -72,6 +83,8 @@ defmodule MuleWorld.Map do
       heroes: %{}
     }
 
+    :ets.insert(@table_name, {:obstacles, state.obstacles})
+
     update_table_and_notify(state)
 
     {:ok, state}
@@ -81,11 +94,9 @@ defmodule MuleWorld.Map do
   def handle_call({:join, player_name}, {hero_pid, _ref}, state) do
     Process.monitor(hero_pid)
 
-    hero = %Hero{
-      position: get_free_coordinate(state),
-      status: :alive,
-      player_name: player_name
-    }
+    position = get_free_coordinate(state)
+
+    hero = Hero.new(player_name, position)
 
     heroes =
       state.heroes
@@ -95,7 +106,7 @@ defmodule MuleWorld.Map do
 
     update_table_and_notify(state)
 
-    {:reply, hero.position, state}
+    {:reply, position, state}
   end
 
   def handle_call({:attack, player_name}, _from, state) do
@@ -114,17 +125,20 @@ defmodule MuleWorld.Map do
               hero.position in attacked_coordinates
           end)
           |> Enum.map(fn {name, {pid, hero}} ->
-            {name, {pid, %{hero | status: :dead}}}
+            {name, {pid, Hero.attacked(hero)}}
           end)
 
-        for {name, {pid, _hero}} <- attacked_heroes do
+        for {name, {pid, hero}} <- attacked_heroes do
           send(pid, :attacked)
-          Process.send_after(self(), {:respawn, name}, @respawn_timeout)
+
+          if hero.status == :dead do
+            Process.send_after(self(), {:respawn, name}, @respawn_timeout)
+          end
         end
 
         {:ok, state.heroes |> Map.merge(Map.new(attacked_heroes))}
       else
-        {:error, state.heroes}
+        {{:error, :dead}, state.heroes}
       end
 
     state = %__MODULE__{state | heroes: heroes}
@@ -143,19 +157,24 @@ defmodule MuleWorld.Map do
           hero.position
           |> Coordinates.move(direction)
 
-        if on_map?(new_position) and not obstacled?(new_position, state) do
-          {:ok, new_position}
-        else
-          :error
+        cond do
+          not on_map?(new_position) ->
+            {:error, :map_boundary}
+
+          obstacled?(new_position, state) ->
+            {:error, :obstacled}
+
+          true ->
+            {:ok, new_position}
         end
       else
-        :error
+        {:error, :dead}
       end
 
     state =
       case result do
         {:ok, new_position} ->
-          hero = %Hero{hero | position: new_position}
+          hero = Hero.moved(hero, new_position)
           %__MODULE__{state | heroes: Map.put(state.heroes, player_name, {pid, hero})}
 
         _ ->
@@ -189,7 +208,7 @@ defmodule MuleWorld.Map do
           send(pid, {:spawned, position})
 
           state.heroes
-          |> Map.put(name, {pid, %Hero{hero | status: :alive, position: position}})
+          |> Map.put(name, {pid, Hero.spawned(hero, position)})
 
         nil ->
           state.heroes
@@ -242,7 +261,12 @@ defmodule MuleWorld.Map do
   end
 
   defp update_table_and_notify(state) do
-    :ets.insert(@table_name, {:map_state, state})
+    heroes =
+      for {name, {_pid, hero}} <- state.heroes,
+          into: %{},
+          do: {name, hero}
+
+    :ets.insert(@table_name, {:heroes, heroes})
 
     Phoenix.PubSub.broadcast(MuleWorld.PubSub, "game", :map_updated)
   end

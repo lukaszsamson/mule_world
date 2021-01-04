@@ -10,10 +10,10 @@ defmodule MuleWorld.Hero do
     :player_name
   ]
 
-  @type status_t :: :dead | :alive | nil
+  @type status_t :: :dead | :alive
 
   @type t :: %__MODULE__{
-          position: Coordinates.t() | nil,
+          position: Coordinates.t(),
           status: status_t,
           player_name: String.t()
         }
@@ -39,12 +39,7 @@ defmodule MuleWorld.Hero do
     player_name = Keyword.fetch!(args, :player_name)
     position = Map.join(player_name)
 
-    {:ok,
-     %__MODULE__{
-       player_name: player_name,
-       status: :alive,
-       position: position
-     }}
+    {:ok, new(player_name, position)}
   end
 
   @impl true
@@ -53,13 +48,13 @@ defmodule MuleWorld.Hero do
       if state.status == :alive do
         Map.move(state.player_name, direction)
       else
-        :error
+        {:error, :dead}
       end
 
     {result, state} =
       case result do
         {:ok, new_position} ->
-          {:ok, %{state | position: new_position}}
+          {:ok, moved(state, new_position)}
 
         other ->
           {other, state}
@@ -73,7 +68,7 @@ defmodule MuleWorld.Hero do
       if state.status == :alive do
         Map.attack(state.player_name)
       else
-        :error
+        {:error, :dead}
       end
 
     {:reply, result, state}
@@ -81,14 +76,32 @@ defmodule MuleWorld.Hero do
 
   @impl true
   def handle_info(:attacked, state = %__MODULE__{}) do
-    state = %__MODULE__{state | status: :dead}
+    state = attacked(state)
 
     {:noreply, state}
   end
 
   def handle_info({:spawned, position}, state = %__MODULE__{}) do
-    state = %__MODULE__{state | status: :alive, position: position}
+    state = spawned(state, position)
 
     {:noreply, state}
   end
+
+  @spec new(String.t(), Coordinates.t()) :: Hero.t()
+  def new(player_name, position),
+    do: %__MODULE__{
+      player_name: player_name,
+      status: :alive,
+      position: position
+    }
+
+  @spec attacked(Hero.t()) :: Hero.t()
+  def attacked(state = %__MODULE__{}), do: %__MODULE__{state | status: :dead}
+
+  @spec spawned(Hero.t(), Coordinates.t()) :: Hero.t()
+  def spawned(state = %__MODULE__{}, position),
+    do: %__MODULE__{state | status: :alive, position: position}
+
+  @spec moved(Hero.t(), Coordinates.t()) :: Hero.t()
+  def moved(state = %__MODULE__{}, position), do: %__MODULE__{state | position: position}
 end
